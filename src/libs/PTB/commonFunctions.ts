@@ -712,6 +712,9 @@ export async function updateOraclePTB(client: SuiClient, txb: Transaction) {
     updateSinglePrice(txb, PriceFeedConfig.MBTC);
     updateSinglePrice(txb, PriceFeedConfig.YBTC);
     updateSinglePrice(txb, PriceFeedConfig.XAUM);
+    updateSinglePrice(txb, PriceFeedConfig.LZWBTC);
+    updateSinglePrice(txb, PriceFeedConfig.suiUSDe);
+    updateSinglePrice(txb, PriceFeedConfig.USDSUI);
 }
 
 export async function updateOracleByIdsPTB(client: SuiClient, txb: Transaction, oracleIds: number[]) {

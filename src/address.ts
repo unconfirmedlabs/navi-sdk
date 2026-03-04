@@ -1668,8 +1668,8 @@ export const PriceFeedConfig: { [key: string]: IPriceFeed } = {
     priceDiffThreshold2: 300, // x2: 3% = 0.03 * 10000 = 300
     maxDurationWithinThresholds: 30 * 1000, // 30s(millisecond)
     maximumAllowedSpanPercentage: 700, // 7% = 0.07 * 10000 = 700
-    maximumEffectivePrice: 20000000000000, // 200000 = 200000 * 1e8 = 20000000000000
-    minimumEffectivePrice: 100000000, // 1 = 1 * 1e8 = 100000000
+    maximumEffectivePrice: 2000000, // 2 = 2 * 1e6 = 2000000
+    minimumEffectivePrice: 100000, // 0.1 = 0.1 * 1e6 = 100000
     historicalPriceTTL: 2 * 60 * 1000, // 2min(millisecond)
     coinType: '0x41d587e5336f1c86cad50d38a7136db99333bb9bda91cea4ba69115defeb1402::sui_usde::SUI_USDE',
     feedId: '0x70b92bcacfbd260b7564871a0a75c2cc4317fcc95aeeb041714d26e168d887be', // TODO: value
@@ -1686,8 +1686,8 @@ USDSUI: {
   priceDiffThreshold2: 300, // x2: 3% = 0.03 * 10000 = 300
   maxDurationWithinThresholds: 30 * 1000, // 30s(millisecond)
   maximumAllowedSpanPercentage: 700, // 7% = 0.07 * 10000 = 700
-  maximumEffectivePrice: 20000000000000, // 200000 = 200000 * 1e8 = 20000000000000
-  minimumEffectivePrice: 100000000, // 1 = 1 * 1e8 = 100000000
+  maximumEffectivePrice: 2000000, // 2 = 2 * 1e6 = 2000000
+  minimumEffectivePrice: 100000, // 0.1 = 0.1 * 1e6 = 100000
   historicalPriceTTL: 2 * 60 * 1000, // 2min(millisecond)
   coinType: '0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI',
   feedId: '0xfe7130d93f535676c57684091256d3351f78050ae071d865d415b1c9664faaa4', // TODO: value
