@@ -78,6 +78,8 @@ export const AddressMap: Record<string, string> = {
     "LZWBTC",
   "0x41d587e5336f1c86cad50d38a7136db99333bb9bda91cea4ba69115defeb1402::sui_usde::SUI_USDE":
     "suiUSDe",
+  "0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI":
+    "USDSUI",
 };
 
 // if the cache is not set, return the default protocol package.
@@ -626,6 +628,20 @@ export const pool: { [key: string]: PoolConfig } = {
       "0xd65ee9f97626d8de70836eb8cf94c6f3644bd30d3acb4cd1c597b1f00acf786b",
     rewardFundId: "",
   },
+  USDSUI: {
+    name: "USDSUI",
+    assetId: 34,
+    poolId:
+      "0xb0da1bf1702e919a3d5182939944435ccfd1b1facd92acb273007c3f09f42201",
+    type: "0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI",
+    reserveObjectId:
+      "0x2f28299408b14c50ad70304fbd86ba15d7b3947377cc9ad1521e37d4d51fa4a6",
+    borrowBalanceParentId:
+      "0xdc9b3a385ea7c6dc443235db7ff9d82188a3e6f5b9af6e765ad9577d39c0af67",
+    supplyBalanceParentId:
+      "0x5c14c5f44f3a0d2919869cec9c691e8ee07900ed8c95baef60d03f5a2b998349",
+    rewardFundId: "",
+  },
 };
 
 export const flashloanConfig = {
@@ -873,6 +889,13 @@ export const suiUSDe: CoinInfo = {
   symbol: "suiUSDe",
   address:
     "0x41d587e5336f1c86cad50d38a7136db99333bb9bda91cea4ba69115defeb1402::sui_usde::SUI_USDE",
+  decimal: 6,
+};
+
+export const USDSUI: CoinInfo = {
+  symbol: "USDSUI",
+  address:
+    "0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI",
   decimal: 6,
 };
 
@@ -1655,6 +1678,24 @@ export const PriceFeedConfig: { [key: string]: IPriceFeed } = {
     pythPriceInfoObject: '0x5dec622733a204ca27f5a90d8c2fad453cc6665186fd5dff13a83d0b6c9027ab',
     priceDecimal: 6,
     expiration: 60,
+},
+USDSUI: {
+  oracleId: 34,
+  maxTimestampDiff: 60 * 1000, // 60s(millisecond)
+  priceDiffThreshold1: 100, // x1: 1% = 0.01 * 10000 = 100
+  priceDiffThreshold2: 300, // x2: 3% = 0.03 * 10000 = 300
+  maxDurationWithinThresholds: 30 * 1000, // 30s(millisecond)
+  maximumAllowedSpanPercentage: 700, // 7% = 0.07 * 10000 = 700
+  maximumEffectivePrice: 20000000000000, // 200000 = 200000 * 1e8 = 20000000000000
+  minimumEffectivePrice: 100000000, // 1 = 1 * 1e8 = 100000000
+  historicalPriceTTL: 2 * 60 * 1000, // 2min(millisecond)
+  coinType: '0x44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI',
+  feedId: '0xfe7130d93f535676c57684091256d3351f78050ae071d865d415b1c9664faaa4', // TODO: value
+  supraPairId: 99999, // BTC_USDT -> 0, https://supra.com/docs/data-feeds/data-feeds-index/#:~:text=Pair%20Category-,BTC_USDT,-0
+  pythPriceFeedId: '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a', // Crypto.BTC/USD -> https://pyth.network/developers/price-feed-ids
+  pythPriceInfoObject: '0x5dec622733a204ca27f5a90d8c2fad453cc6665186fd5dff13a83d0b6c9027ab',
+  priceDecimal: 6,
+  expiration: 60,
 }
 };
 
