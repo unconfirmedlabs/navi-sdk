@@ -1,50 +1,48 @@
-import axios from "axios";
-import {
-  type SuiTransport,
-  type SuiTransportRequestOptions,
-} from "@mysten/sui/client";
-import { SuiClient } from "@mysten/sui/client";
+// ---------------------------------------------------------------------------
+// gRPC URL helper for AccountManager.
+//
+// Pre-fork the SDK shipped a `NAVIHttpTransport` class that wrapped axios
+// around the JSON-RPC envelope, which let users pass a custom RPC endpoint
+// to `new AccountManager({ network: '<custom-url>' })`. v2 of `@mysten/sui`
+// stops shipping the JSON-RPC client by default — gRPC is the new default
+// transport — and `SuiGrpcClient`'s `baseUrl` constructor option already
+// covers the "custom endpoint" use case the transport class was added for.
+// So we drop the class and expose a single resolver here.
+// ---------------------------------------------------------------------------
 
-const instance = axios.create({
-  timeout: 20000,
-});
+import type { SuiClientTypes } from "@mysten/sui/client";
 
-instance.interceptors.response.use(
-  function (response) {
-    if (response.data.err) {
-      throw new Error(response.data.err);
-    }
-    if (response.data.error) {
-      throw new Error(response.data.error.message);
-    }
-    return response;
-  },
-  function (error) {
-    return Promise.reject(error);
+export type NaviNetwork = SuiClientTypes.Network;
+
+const FULLNODE_BASE_URLS: Record<string, string> = {
+  mainnet: "https://fullnode.mainnet.sui.io:443",
+  testnet: "https://fullnode.testnet.sui.io:443",
+  devnet: "https://fullnode.devnet.sui.io:443",
+  localnet: "http://127.0.0.1:9000",
+};
+
+/**
+ * Resolve a `network` string into `(network, baseUrl)` for `SuiGrpcClient`.
+ * Accepts either a known network name (`mainnet` / `testnet` / `devnet` /
+ * `localnet`) or a fully-qualified URL — anything that doesn't look like a
+ * known name is treated as a custom mainnet endpoint, matching v1
+ * AccountManager's behavior of letting users plug in their own RPC URL.
+ */
+export function resolveGrpcEndpoint(network: string | undefined): {
+  network: NaviNetwork;
+  baseUrl: string;
+} {
+  if (!network) {
+    return { network: "mainnet", baseUrl: FULLNODE_BASE_URLS.mainnet };
   }
-);
-
-export class NAVIHttpTransport implements SuiTransport {
-  requestId = 0;
-  rpcUrl: string;
-
-  constructor(rpcUrl: string) {
-    this.rpcUrl = rpcUrl;
+  if (network in FULLNODE_BASE_URLS) {
+    return {
+      network: network as NaviNetwork,
+      baseUrl: FULLNODE_BASE_URLS[network],
+    };
   }
-
-  async request<T>(input: SuiTransportRequestOptions): Promise<T> {
-    this.requestId += 1;
-    const res = await instance.post(this.rpcUrl, {
-      jsonrpc: "2.0",
-      id: this.requestId,
-      method: input.method,
-      params: input.params,
-    });
-
-    return res.data.result;
-  }
-
-  async subscribe<T>(): Promise<() => Promise<boolean>> {
-    throw new Error("subscribe not implemented.");
-  }
+  // Treat as a custom URL — the caller has supplied their own fullnode
+  // endpoint. v1 used this path with NAVIHttpTransport; v2 plumbs it
+  // straight into `SuiGrpcClient.baseUrl`.
+  return { network: "mainnet", baseUrl: network };
 }

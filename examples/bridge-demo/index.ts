@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Bridge } from "navi-sdk";
 import { WalletConnection } from "navi-sdk/dist/libs/Bridge/providers/mayan";
-import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import * as ethers from "ethers";
 import {
@@ -11,7 +11,7 @@ import {
   VersionedTransaction,
 } from "@solana/web3.js";
 
-const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 const suiWallet = Ed25519Keypair.fromSecretKey(
   process.env.SUI_PRIVATE_KEY as string
 );

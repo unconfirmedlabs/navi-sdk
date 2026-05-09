@@ -1,16 +1,13 @@
-import { SuiClient } from "@mysten/sui/client";
+import type { ClientWithCoreApi } from "@mysten/sui/client";
 
 /**
  * Retrieves the amount of a specific coin owned by a sender.
  *
- * @param client - The SuiClient instance used to interact with the blockchain.
- * @param sender - The address of the sender.
- * @param coinType - The type of the coin to retrieve the amount for.
- * @returns A Promise that resolves to the amount of the specified coin owned by the sender.
- * @throws An error if the sender or client is undefined.
+ * v2 `core.getBalance` returns `{ balance: { coinType, balance, ... } }`
+ * (was v1 `{ totalBalance, coinObjectCount }`).
  */
 export async function getCoinAmount(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   sender: string,
   coinType: string
 ): Promise<number> {
@@ -20,26 +17,24 @@ export async function getCoinAmount(
   if (!client) {
     throw new Error("Client is undefined.");
   }
-  const coinInfo = await client.getBalance({
+  const coinInfo = await client.core.getBalance({
     owner: sender,
     coinType,
   });
-  const tokenBalance = Number(coinInfo.totalBalance);
+  const tokenBalance = Number(coinInfo.balance.balance);
   console.log("Token Type : ", coinType, "Balance: ", tokenBalance);
   return tokenBalance;
 }
 
 /**
  * Retrieves the decimal value for a specific coin type.
- * @param client - The SuiClient instance.
- * @param coinType - The type of coin.
- * @returns A Promise that resolves to the decimal value of the coin.
+ * v2 `core.getCoinMetadata` wraps the response as `{ coinMetadata: ... | null }`.
  */
 export async function getCoinDecimal(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   coinType: string
 ): Promise<any> {
-  const coinMetadata = await client.getCoinMetadata({ coinType: coinType });
-  if (coinMetadata) return coinMetadata.decimals;
+  const result = await client.core.getCoinMetadata({ coinType });
+  if (result.coinMetadata) return result.coinMetadata.decimals;
   return 9;
 }

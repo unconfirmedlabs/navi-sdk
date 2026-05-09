@@ -10,22 +10,16 @@ import { error } from 'console';
 import dotenv from 'dotenv';
 import { AccountManager } from '../src/libs/AccountManager';
 import { migrateBorrowPTB, migrateSupplyPTB } from '../src/libs/PTB/migrate';
-import { SuiClient } from '@mysten/sui/client';
+import type { ClientWithCoreApi } from '@mysten/sui/client';
 import { haSui } from "../src/address";
 import { generateRefId } from '../src/libs/Aggregator/utils';
+import { dryRunTXB, devInspect } from './helper';
 dotenv.config();
 
 const rpcUrl = process.env.RPC || '';
 const mnemonic = process.env.MNEMONIC || '';
 const privateKey = process.env.PRIVATE_KEY || '';
 const apiKey = process.env.API_KEY || '';
-async function dryRunTXB(txb: Transaction, client: SuiClient) {
-    const dryRunTxBytes: Uint8Array = await txb.build({
-        client: client
-    });
-    const dryRunResult = await client.dryRunTransactionBlock({ transactionBlock: dryRunTxBytes });
-    return dryRunResult;
-}
 
 describe('NAVI SDK Client', async () => {
 
@@ -161,15 +155,12 @@ describe('NAVI SDK Account Manager', async () => {
         const [toDeposit] = txb.splitCoins(txb.gas, [1e9]);
         await depositCoin(txb, poolConfig, toDeposit, 1e9);
 
-        const result = await account.client.devInspectTransactionBlock({
-            transactionBlock: txb,
-            sender: account.address,
-        })
+        const result = await devInspect(account.client, txb, account.address)
 
-        if (result.effects.status.status === "failure") {
-            throw new Error(result.effects.status.error)
+        if (!result?.effects?.status?.success) {
+            throw new Error(JSON.stringify(result.effects.status.error))
         }
-        expect(result.effects.status.status).toEqual("success");
+        expect(result.effects.status.success).toBe(true);
 
     });
     it('should success withdraw Sui to NAVI protocol', async () => {
@@ -180,14 +171,11 @@ describe('NAVI SDK Account Manager', async () => {
         await depositCoin(txb, poolConfig, toDeposit, 1e9);
         await withdrawCoin(txb, poolConfig, 1e9);
 
-        const result = await account.client.devInspectTransactionBlock({
-            transactionBlock: txb,
-            sender: account.address,
-        })
-        if (result.effects.status.status === "failure") {
-            throw new Error(result.effects.status.error)
+        const result = await devInspect(account.client, txb, account.address)
+        if (!result?.effects?.status?.success) {
+            throw new Error(JSON.stringify(result.effects.status.error))
         }
-        expect(result.effects.status.status).toEqual("success");
+        expect(result.effects.status.success).toBe(true);
 
     });
     it('should success borrow Sui from NAVI protocol', async () => {
@@ -198,14 +186,11 @@ describe('NAVI SDK Account Manager', async () => {
         await depositCoin(txb, poolConfig, toDeposit, 1e9);
         await borrowCoin(txb, poolConfig, 0.5e9);
 
-        const result = await account.client.devInspectTransactionBlock({
-            transactionBlock: txb,
-            sender: account.address,
-        })
-        if (result.effects.status.status === "failure") {
-            throw new Error(result.effects.status.error)
+        const result = await devInspect(account.client, txb, account.address)
+        if (!result?.effects?.status?.success) {
+            throw new Error(JSON.stringify(result.effects.status.error))
         }
-        expect(result.effects.status.status).toEqual("success");
+        expect(result.effects.status.success).toBe(true);
 
     });
     it('should success Repay Sui from NAVI protocol - random address might fail', async () => {
@@ -216,14 +201,11 @@ describe('NAVI SDK Account Manager', async () => {
 
         await repayDebt(txb, poolConfig, toRepay, 0.1e6);
 
-        const result = await account.client.devInspectTransactionBlock({
-            transactionBlock: txb,
-            sender: '0x010ac247d4b9f8fcc9704b53b4aee5c4b00c3263b17bc39d3898ea802518bac9'
-        })
-        if (result.effects.status.status === "failure") {
-            throw new Error(result.effects.status.error)
+        const result = await devInspect(account.client, txb, '0x010ac247d4b9f8fcc9704b53b4aee5c4b00c3263b17bc39d3898ea802518bac9')
+        if (!result?.effects?.status?.success) {
+            throw new Error(JSON.stringify(result.effects.status.error))
         }
-        expect(result.effects.status.status).toEqual("success");
+        expect(result.effects.status.success).toBe(true);
 
     });
     it('should success stake Sui to Volo Sui', async () => {
@@ -233,14 +215,11 @@ describe('NAVI SDK Account Manager', async () => {
 
         await stakeTovSuiPTB(txb, toStake);
 
-        const result = await account.client.devInspectTransactionBlock({
-            transactionBlock: txb,
-            sender: account.address
-        })
-        if (result.effects.status.status === "failure") {
-            throw new Error(result.effects.status.error)
+        const result = await devInspect(account.client, txb, account.address)
+        if (!result?.effects?.status?.success) {
+            throw new Error(JSON.stringify(result.effects.status.error))
         }
-        expect(result.effects.status.status).toEqual("success");
+        expect(result.effects.status.success).toBe(true);
 
     });
     it('should success update oracle', async () => {
@@ -248,14 +227,11 @@ describe('NAVI SDK Account Manager', async () => {
         txb.setSender(account.address);
         await updateOraclePTB(account.client, txb);
 
-        const result = await account.client.devInspectTransactionBlock({
-            transactionBlock: txb,
-            sender: account.address,
-        })
-        if (result.effects.status.status === "failure") {
-            throw new Error(result.effects.status.error)
+        const result = await devInspect(account.client, txb, account.address)
+        if (!result?.effects?.status?.success) {
+            throw new Error(JSON.stringify(result.effects.status.error))
         }
-        expect(result.effects.status.status).toEqual("success");
+        expect(result.effects.status.success).toBe(true);
 
     });
 
@@ -281,14 +257,11 @@ describe('NAVI SDK Account Manager', async () => {
         swapPTB(account.address, txb, from, to, fromCoin, amount, 0, ""
         ).then(coinB => {
             txb.transferObjects([coinB], account.address);
-            account.client.devInspectTransactionBlock({
-                transactionBlock: txb,
-                sender: account.address,
-            }).then(result => {
-                if (result.effects.status.status === "failure") {
-                    throw new Error(result.effects.status.error)
+            devInspect(account.client, txb, account.address).then(result => {
+                if (!result?.effects?.status?.success) {
+                    throw new Error(JSON.stringify(result.effects.status.error))
                 }
-                expect(result.effects.status.status).toEqual("success");
+                expect(result.effects.status.success).toBe(true);
             });
         // txb.build({
         //     client: account.client
@@ -317,14 +290,11 @@ describe('NAVI SDK Account Manager', async () => {
         }
         ).then(coinB => {
             txb.transferObjects([coinB], account.address);
-            account.client.devInspectTransactionBlock({
-                transactionBlock: txb,
-                sender: account.address,
-            }).then(result => {
-                if (result.effects.status.status === "failure") {
-                    throw new Error(result.effects.status.error)
+            devInspect(account.client, txb, account.address).then(result => {
+                if (!result?.effects?.status?.success) {
+                    throw new Error(JSON.stringify(result.effects.status.error))
                 }
-                expect(result.effects.status.status).toEqual("success");
+                expect(result.effects.status.success).toBe(true);
             });
         });
     });

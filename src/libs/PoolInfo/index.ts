@@ -1,13 +1,14 @@
 import axios from 'axios';
 import { pool, getConfig } from '../../address';
 import { CoinInfo, Pool, PoolConfig, PoolsResponse, PoolData } from "../../types";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import type { ClientWithCoreApi } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import BigNumber from 'bignumber.js';
 
-type FetchPoolDataArgs = { 
-    poolId: number, 
-    client: SuiClient, 
-    reserveParentId: string, 
+type FetchPoolDataArgs = {
+    poolId: number,
+    client: ClientWithCoreApi,
+    reserveParentId: string,
     poolInfo: any
 }
 
@@ -73,22 +74,30 @@ export const fetchPoolData = ({ poolId, client, reserveParentId, poolInfo }: Fet
   };
 };
 
-export const fetchFlashloanData = async (client: SuiClient) => {
+export const fetchFlashloanData = async (client: ClientWithCoreApi) => {
     const config = await getConfig();
-    const result: any = await client.getDynamicFields({
+    // v2 `core.listDynamicFields` returns `{ dynamicFields: DynamicFieldEntry[], cursor, hasNextPage }`
+    // (was v1 `client.getDynamicFields(...).data: DynamicFieldInfo[]`). Each
+    // DynamicFieldEntry exposes a `fieldId` (was `objectId`).
+    const page = await client.core.listDynamicFields({
         parentId: config.flashloanSupportedAssets,
     });
 
     const resultList: { [key: string]: any } = {};
 
-    await Promise.all(result.data.map(async (item: any) => {
-        const result2: any = await client.getObject({
-            id: item.objectId,
-            options: {
-                showContent: true
-            }
+    await Promise.all(page.dynamicFields.map(async (item) => {
+        const result2 = await client.core.getObject({
+            objectId: item.fieldId,
+            include: { json: true },
         });
-        const fields = result2.data?.content?.fields?.value?.fields;
+        // v1 walked `result2.data.content.fields.value.fields`. v2's json
+        // payload renders the same Move struct content one level shallower —
+        // `obj.object.json.value.fields` covers the nested shape NAVI uses,
+        // and we fall back to `obj.object.json.value` if the inner `fields`
+        // wrapper isn't present (matches both renderings observed across
+        // fullnode versions).
+        const valueWrapper: any = (result2.object.json as any)?.value;
+        const fields = valueWrapper?.fields ?? valueWrapper;
         const coin_type = fields?.coin_type;
         if (coin_type) {
             const hexCoinType = '0x' + coin_type
@@ -112,10 +121,11 @@ export const fetchFlashloanData = async (client: SuiClient) => {
  * @returns The pool information for the specified coin symbol, or all pool information if no coin symbol is provided.
  * @throws If there is an error fetching the pool information.
  */
-export async function getPoolInfo(coin?: CoinInfo, client?: SuiClient) {
+export async function getPoolInfo(coin?: CoinInfo, client?: ClientWithCoreApi) {
     if (!client) {
-        client = new SuiClient({
-            url: getFullnodeUrl("mainnet"),
+        client = new SuiGrpcClient({
+            network: "mainnet",
+            baseUrl: "https://fullnode.mainnet.sui.io:443",
         });
     }
 

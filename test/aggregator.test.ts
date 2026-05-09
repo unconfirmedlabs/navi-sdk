@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import { buildSwapPTBFromQuote, swapPTB } from "../src/libs/Aggregator/swapPTB";
 import { getQuote } from "../src/libs/Aggregator/getQuote";
@@ -32,14 +32,14 @@ describe("swap test", () => {
   it("should successfully swap SUI through cetus using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     const quote = await getQuote(coins.sui.address, coins.vSui.address, amountIn, undefined, {
@@ -69,14 +69,14 @@ describe("swap test", () => {
   it("should successfully swap SUI through magma using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     const quote = await getQuote(coins.sui.address, coins.vSui.address, amountIn, undefined, {
@@ -106,14 +106,14 @@ describe("swap test", () => {
   it("should successfully swap SUI through turbos using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     const quote = await getQuote(coins.sui.address, coins.vSui.address, amountIn, undefined, {
@@ -144,14 +144,14 @@ describe("swap test", () => {
   it("should successfully swap DEEP through deepbook using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.deep.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get DEEP coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.deep.holder,
       coinType: coins.deep.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     const quote = await getQuote(coins.deep.address, coins.sui.address, amountIn, undefined, {
@@ -182,14 +182,14 @@ describe("swap test", () => {
   it("should successfully swap SUI through haSui stake using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     const quote = await getQuote(coins.sui.address, coins.haSui.address, amountIn, undefined, {
@@ -220,15 +220,15 @@ describe("swap test", () => {
   it("should successfully swap haSui through haSui unstake using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.haSui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
     
     // Get haSui coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.haSui.holder,
       coinType: coins.haSui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
-    const coinInStructBalance = coinInStruct.data[0].balance;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
+    const coinInStructBalance = coinInStruct.objects[0].balance;
     
     const quote = await getQuote(coins.haSui.address, coins.sui.address, coinInStructBalance, undefined, {
       baseUrl: localBaseUrl,
@@ -259,14 +259,14 @@ describe("swap test", () => {
   it("should successfully swap SUI through vSui stake anyway", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
     
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
     
     const quote = await getQuote(coins.sui.address, coins.vSui.address, amountIn, undefined, {
@@ -301,14 +301,14 @@ describe("fee options test", () => {
   it("should successfully swap SUI through cetus using single route with fee", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     const quote = await getQuote(coins.sui.address, coins.vSui.address, amountIn, undefined, {
@@ -352,15 +352,15 @@ describe("fee options test", () => {
   it("should successfully swap vSUI through cetus using single route with fee", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.vSui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get vSUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.vSui.holder,
       coinType: coins.vSui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
-    const coinInStructBalance = coinInStruct.data[0].balance;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
+    const coinInStructBalance = coinInStruct.objects[0].balance;
     
     const coinIn = txb.splitCoins(txb.object(coinInStructObjectId), [
       coinInStructBalance,
@@ -405,14 +405,14 @@ describe("fee options test", () => {
   it("should swap PTB with fee options successfully", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     // Test sui to vSui swap
@@ -462,14 +462,14 @@ describe("fee options test", () => {
   it("should swap PTB with service fee options successfully", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get SUI coins owned by the holder
-    const coinInStruct = await suiClient.getCoins({
+    const coinInStruct = await suiClient.core.listCoins({
       owner: coins.sui.holder,
       coinType: coins.sui.address
     });
-    const coinInStructObjectId = coinInStruct.data[0].coinObjectId;
+    const coinInStructObjectId = coinInStruct.objects[0].objectId;
     const amountIn = "1000000000";
 
     // Test sui to vSui swap

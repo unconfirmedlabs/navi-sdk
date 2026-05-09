@@ -1,5 +1,5 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import * as fs from "fs";
 import * as path from "path";
 import { SignAndSubmitTXB } from "../src/libs/PTB";
@@ -24,14 +24,66 @@ const parseErrorMessage = (errorMessage: string) => {
 };
 
 /**
- * Dry run a transaction block without actually submitting it.
- * @param txb The transaction block to run.
- * @param client The Sui client to interact with the blockchain.
- * @returns The result of the dry run.
+ * Run a moveInspect-style read against a `ClientWithCoreApi` and return a
+ * v1-shaped envelope (`results[].returnValues[]`, `effects.status.status`).
+ * v2 has no `devInspectTransactionBlock` — this is the same `simulateTransaction({
+ * checksEnabled: false })` path NAVI's CallFunctions module uses internally.
  */
-export async function dryRunTXB(txb: Transaction, client: SuiClient) {
-  const txBytes = await txb.build({ client });
-  return await client.dryRunTransactionBlock({ transactionBlock: txBytes });
+export async function devInspect(client: ClientWithCoreApi, txb: Transaction, sender: string) {
+  txb.setSenderIfNotSet(sender);
+  const sim: any = await client.core.simulateTransaction({
+    transaction: txb,
+    checksEnabled: false,
+    include: { effects: true, commandResults: true },
+  });
+  const tx = sim.Transaction ?? sim.FailedTransaction;
+  const status = tx?.effects?.status;
+  const results = (sim.commandResults ?? []).map((cmd: any) => ({
+    returnValues: (cmd.returnValues ?? []).map((rv: any) => [Array.from(rv.bcs ?? []), '']),
+  }));
+  return {
+    effects: {
+      ...(tx?.effects ?? {}),
+      status: {
+        status: status?.success ? 'success' : 'failure',
+        error: status && !status.success ? JSON.stringify(status.error) : undefined,
+        success: !!status?.success,
+      },
+    },
+    results,
+  } as any;
+}
+
+/**
+ * Dry run a transaction block without actually submitting it.
+ * Returns a v1-shaped status envelope (`effects.status.status: 'success' | 'failure'`)
+ * so existing test assertions keep working — adapter inside.
+ *
+ * v2 `core.simulateTransaction` returns the discriminated
+ * `{ Transaction } | { FailedTransaction }` envelope with a boolean
+ * `effects.status.success`. We unwrap and re-shape so tests written
+ * against the v1 dryRunTransactionBlock surface compile and read
+ * naturally without rewriting every assertion.
+ */
+export async function dryRunTXB(txb: Transaction, client: ClientWithCoreApi) {
+  const result = await client.core.simulateTransaction({
+    transaction: txb,
+    include: { effects: true, events: true, balanceChanges: true },
+  });
+  const tx = result.Transaction ?? result.FailedTransaction;
+  const status = tx?.effects?.status;
+  return {
+    digest: tx?.digest,
+    effects: {
+      ...(tx?.effects ?? {}),
+      status: {
+        status: status?.success ? "success" : "failure",
+        error: status && !status.success ? JSON.stringify(status.error) : undefined,
+      },
+    },
+    events: tx?.events ?? [],
+    balanceChanges: tx?.balanceChanges ?? [],
+  } as any;
 }
 
 /**

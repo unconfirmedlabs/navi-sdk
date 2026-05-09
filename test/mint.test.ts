@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import { buildSwapPTBFromQuote } from "../src/libs/Aggregator/swapPTB";
 import { getQuote } from "../src/libs/Aggregator/getQuote";

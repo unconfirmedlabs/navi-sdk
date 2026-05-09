@@ -15,21 +15,24 @@ import { describe, it, expect } from "vitest";
 import { NAVISDKClient } from "../src/index";
 import { Transaction } from "@mysten/sui/transactions";
 import dotenv from "dotenv";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 
 dotenv.config();
 
 const rpcUrl = "";
 const mnemonic = process.env.MNEMONIC || "";
 
-export async function dryRunTXB(txb: Transaction, client: SuiClient) {
-  const dryRunTxBytes: Uint8Array = await txb.build({
-    client: client,
+// v2: `core.simulateTransaction` accepts a Transaction directly (no separate
+// `tx.build`) and returns the discriminated `{ Transaction } | { FailedTransaction }`
+// envelope. Tests in this file are `describe.skip`'d so behaviour parity is
+// not currently exercised — keeping the helper signature for parity with
+// pre-fork consumers.
+export async function dryRunTXB(txb: Transaction, client: ClientWithCoreApi) {
+  const dryRunResult = await client.core.simulateTransaction({
+    transaction: txb,
+    include: { effects: true, events: true, balanceChanges: true },
   });
-  const dryRunResult = await client.dryRunTransactionBlock({
-    transactionBlock: dryRunTxBytes,
-  });
-  return dryRunResult;
+  return dryRunResult.Transaction ?? dryRunResult.FailedTransaction;
 }
 
 const logToFile = (data: any, filePath: string) => {

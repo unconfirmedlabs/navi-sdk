@@ -4,24 +4,40 @@ import { AggregatorConfig } from "./config";
 import { Dex, Quote, SwapOptions } from "../../types";
 import { returnMergedCoins } from "../PTB/commonFunctions";
 import { Transaction, TransactionResult } from "@mysten/sui/transactions";
-import { SuiClient } from "@mysten/sui/client";
+import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { getQuote } from "./getQuote";
 import { generateRefId } from "./utils";
 import { handleServiceFee, emitServiceFeeEvent } from './serviceFee';
 import { buildSwapWithoutServiceFee } from './buildSwapWithoutServiceFee';
 
+/**
+ * Returns coin objects of `coinType` for `address` in the v1 `{ data: [...] }`
+ * shape that downstream callers (PTB merge/split helpers) consume.
+ *
+ * v2 `core.listCoins` returns `{ objects, hasNextPage, cursor }` with
+ * `objectId` instead of `coinObjectId`. We re-shape inside this helper so
+ * `getCoinPTB` and other consumers can keep their existing `coinInfo.data[0].coinObjectId`
+ * accessors without touching every callsite.
+ */
 export async function getCoins(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   address: string,
   coinType: any = "0x2::sui::SUI"
 ) {
   const coinAddress = coinType.address ? coinType.address : coinType;
 
-  const coinDetails = await client.getCoins({
-    owner: address,
-    coinType: coinAddress,
-  });
-  return coinDetails;
+  const page = await client.core.listCoins({ owner: address, coinType: coinAddress });
+  return {
+    data: page.objects.map((c) => ({
+      coinObjectId: c.objectId,
+      balance: c.balance,
+      coinType: c.type,
+      version: c.version,
+      digest: c.digest,
+    })),
+    nextCursor: page.cursor,
+    hasNextPage: page.hasNextPage,
+  };
 }
 
 export async function getCoinPTB(
@@ -29,7 +45,7 @@ export async function getCoinPTB(
   coin: string,
   amountIn: number | string | bigint,
   txb: Transaction,
-  client: SuiClient
+  client: ClientWithCoreApi
 ) {
   let coinA: TransactionResult;
 
@@ -198,15 +214,20 @@ export async function swapPTB(
 
 export async function checkIfNAVIIntegrated(
   digest: string,
-  client: SuiClient
+  client: ClientWithCoreApi
 ): Promise<boolean> {
-  const results = await client.getTransactionBlock({
+  // v2 `core.getTransaction` returns `{ Transaction } | { FailedTransaction }`
+  // with `events.events: Event[]`; the v2 Event has `eventType` (was v1
+  // `event.type`). The on-chain emit is identical — only the off-chain
+  // field name changed.
+  const result = await client.core.getTransaction({
     digest,
-    options: { showEvents: true },
+    include: { events: true },
   });
+  const tx = result.Transaction ?? result.FailedTransaction;
   return (
-    results.events?.some((event) =>
-      event.type.includes(`${AggregatorConfig.aggregatorContract}::slippage`)
+    tx?.events?.some((event) =>
+      event.eventType.includes(`${AggregatorConfig.aggregatorContract}::slippage`)
     ) ?? false
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 
 import { buildSwapPTBFromQuote } from "../src/libs/Aggregator/swapPTB";
 import { getQuote } from "../src/libs/Aggregator/getQuote";
@@ -24,7 +24,7 @@ describe("redeem test", () => {
   it("should successfully redeem sSui through springSui unstake using single route", async () => {
     const testCaseName = expect.getState().currentTestName || "test_case";
     const txb = createTransaction(account, coins.sSui.holder);
-    const suiClient = new SuiClient({ url: getFullnodeUrl("mainnet") });
+    const suiClient = new SuiGrpcClient({ network: "mainnet", baseUrl: "https://fullnode.mainnet.sui.io:443" });
 
     // Get sSui coins owned by the holder
     const coinInStruct = await suiClient.getCoins({

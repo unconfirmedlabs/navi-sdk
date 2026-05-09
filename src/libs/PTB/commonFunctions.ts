@@ -1,9 +1,13 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { getConfig, flashloanConfig, pool, vSuiConfig, PriceFeedConfig, OracleProConfig, IPriceFeed, AddressMap } from '../../address'
 import { CoinInfo, Pool, PoolConfig, OptionType, PoolRewards } from '../../types';
-import { bcs } from '@mysten/sui.js/bcs';
-import { SuiClient } from "@mysten/sui/client";
-import { SuiPriceServiceConnection, SuiPythClient } from '@pythnetwork/pyth-sui-js'
+import type { ClientWithCoreApi } from "@mysten/sui/client";
+import { HermesClient } from '@pythnetwork/hermes-client';
+import { SuiPythClient } from '../PythClient';
+import { Buffer } from 'node:buffer';
+
+// `registerStructs()` was the only consumer of `bcs` in this file; v2 typed
+// struct defs now live in `src/libs/bcs.ts`. Import retained at zero use here.
 import * as V3 from  './V3';
 import * as V2 from  './V2';
 
@@ -357,21 +361,22 @@ export async function liquidateFunction(txb: Transaction, payCoinType: CoinInfo,
 
 /**
  * Signs and submits a transaction block using the provided client and keypair.
- * @param txb - The transaction block to sign and submit.
- * @param client - The client object used to sign and execute the transaction block.
- * @param keypair - The keypair used as the signer for the transaction block.
- * @returns A promise that resolves to the result of signing and executing the transaction block.
+ *
+ * v2 Core API: `client.core.signAndExecuteTransaction` accepts `transaction`
+ * (a Transaction object or pre-built Uint8Array), a `signer`, and `include`
+ * to ask for effects/events back. The v1 `requestType: 'WaitForLocalExecution'`
+ * option has no v2 equivalent — finality is observed via
+ * `client.core.waitForTransaction` (called separately if the caller wants).
+ * Result envelope is `{ Transaction } | { FailedTransaction }`; we unwrap so
+ * callers see a flat `Transaction` regardless of success.
  */
-export async function SignAndSubmitTXB(txb: Transaction, client: any, keypair: any) {
-    const result = await client.signAndExecuteTransaction({
+export async function SignAndSubmitTXB(txb: Transaction, client: ClientWithCoreApi, keypair: any) {
+    const result = await client.core.signAndExecuteTransaction({
         transaction: txb,
         signer: keypair,
-        requestType: 'WaitForLocalExecution',
-        options: {
-            showEffects: true
-        }
-    })
-    return result;
+        include: { effects: true },
+    });
+    return result.Transaction ?? result.FailedTransaction;
 }
 
 
@@ -432,7 +437,7 @@ export async function unstakeTovSui(txb: Transaction, vSuiCoinObj: any) {
  * @returns Promise resolving to an array of aggregated PoolRewards.
  */
 export async function getAvailableRewards(
-    client: SuiClient,
+    client: ClientWithCoreApi,
     checkAddress: string,
     contractOptionTypes: OptionType[], // Use ContractOptionType[] if you have a dedicated type
     prettyPrint = true,
@@ -543,7 +548,7 @@ export async function getAvailableRewards(
    * Claims all available rewards for the specified account.
    * @returns PTB result
    */
-export async function claimAllRewardsPTB(client: SuiClient, userToCheck: string, existingTx?: Transaction) {
+export async function claimAllRewardsPTB(client: ClientWithCoreApi, userToCheck: string, existingTx?: Transaction) {
     let tx = existingTx || new Transaction();
     // await V2.claimAllRewardsPTB(client, userToCheck, tx)
     await V3.claimAllRewardsPTB(client, userToCheck, tx)
@@ -555,7 +560,7 @@ export async function claimAllRewardsPTB(client: SuiClient, userToCheck: string,
    * Claims available rewards by asset ID for the specified account.
    * @returns PTB result
    */
-export async function claimRewardsByAssetIdPTB(client: SuiClient, userToCheck: string, assetId: number, existingTx?: Transaction) {
+export async function claimRewardsByAssetIdPTB(client: ClientWithCoreApi, userToCheck: string, assetId: number, existingTx?: Transaction) {
     let tx = existingTx || new Transaction();
     // await V2.claimRewardsByAssetIdPTB(client, userToCheck, assetId, tx)
     await V3.claimRewardsByAssetIdPTB(client, userToCheck, assetId, tx)
@@ -568,7 +573,7 @@ export async function claimRewardsByAssetIdPTB(client: SuiClient, userToCheck: s
    * Claims all available rewards for the specified account.
    * @returns PTB result
    */
-export async function claimAllRewardsResupplyPTB(client: SuiClient, userToCheck: string, existingTx?: Transaction) {
+export async function claimAllRewardsResupplyPTB(client: ClientWithCoreApi, userToCheck: string, existingTx?: Transaction) {
     let tx = existingTx || new Transaction();
     // await V2.claimAllRewardsResupplyPTB(client, userToCheck, tx)
     await V3.claimAllRewardsResupplyPTB(client, userToCheck, tx)
@@ -586,42 +591,48 @@ export async function claimAllRewardsResupplyPTB(client: SuiClient, userToCheck:
  * @param options - Optional configuration options for the connection.
  * @returns A new instance of the SuiPriceServiceConnection.
  */
-const suiPythConnection = new SuiPriceServiceConnection('https://hermes.pyth.network', { timeout: 20000 })
+// Pre-fork the SDK used `SuiPriceServiceConnection` from `@pythnetwork/pyth-sui-js`
+// which transitively required `@mysten/sui@^1.x`. v3 of Pyth split the
+// HTTP-only API client into the standalone `@pythnetwork/hermes-client`
+// package — same Hermes endpoint, no Sui SDK dependency.
+const hermesClient = new HermesClient('https://hermes.pyth.network', { timeout: 20000 } as any);
 
 /**
  * Retrieves the stale price feed IDs from the given array of price IDs.
- * 
+ *
  * @param priceIds - An array of price IDs.
  * @returns A promise that resolves to an array of stale price feed IDs.
  * @throws If there is an error while retrieving the stale price feed IDs.
  */
 async function getPythStalePriceFeedId(priceIds: string[]): Promise<string[]> {
     try {
-        const returnData: string[] = []
-        const latestPriceFeeds = await suiPythConnection.getLatestPriceFeeds(priceIds)
-        if (!latestPriceFeeds) return returnData
+        const returnData: string[] = [];
+        const update = await hermesClient.getLatestPriceUpdates(priceIds, { parsed: true });
+        const parsed = update?.parsed ?? [];
+        if (parsed.length === 0) return returnData;
 
-        const currentTimestamp = Math.floor(new Date().valueOf() / 1000)
-        for (const priceFeed of latestPriceFeeds) {
-            const uncheckedPrice = priceFeed.getPriceUnchecked()
-            if (uncheckedPrice.publishTime > currentTimestamp) {
+        const currentTimestamp = Math.floor(new Date().valueOf() / 1000);
+        for (const feed of parsed) {
+            const id = String((feed as any).id);
+            const publishTime = Number((feed as any).price?.publish_time ?? 0);
+            if (publishTime > currentTimestamp) {
                 console.warn(
-                    `pyth price feed is invalid, id: ${priceFeed.id}, publish time: ${uncheckedPrice.publishTime}, current timestamp: ${currentTimestamp}`,
-                )
-                continue
+                    `pyth price feed is invalid, id: ${id}, publish time: ${publishTime}, current timestamp: ${currentTimestamp}`,
+                );
+                continue;
             }
-
-            // From pyth state is 60, but setting it to 30 makes more sense.
-            if (currentTimestamp - priceFeed.getPriceUnchecked().publishTime > 30) {
+            // Pyth state default staleness is 60s; we tighten to 30s to give the
+            // PTB extra headroom under variable network latency.
+            if (currentTimestamp - publishTime > 30) {
                 console.info(
-                    `stale price feed, id: ${priceFeed.id}, publish time: ${uncheckedPrice.publishTime}, current timestamp: ${currentTimestamp}`,
-                )
-                returnData.push(priceFeed.id)
+                    `stale price feed, id: ${id}, publish time: ${publishTime}, current timestamp: ${currentTimestamp}`,
+                );
+                returnData.push(id);
             }
         }
-        return returnData
+        return returnData;
     } catch (error) {
-        throw new Error(`failed to get pyth stale price feed id, msg: ${(error as Error).message}`)
+        throw new Error(`failed to get pyth stale price feed id, msg: ${(error as Error).message}`);
     }
 }
 
@@ -654,14 +665,21 @@ function updateSinglePrice(txb: Transaction, input: Pick<IPriceFeed, 'feedId' | 
  * @returns A Promise that resolves to the result of updating the price feeds.
  * @throws If there is an error updating the price feeds.
  */
-async function updatePythPriceFeeds(client: SuiClient, txb: Transaction, priceFeedIds: string[]) {
-    try {
-        const priceUpdateData = await suiPythConnection.getPriceFeedsUpdateData(priceFeedIds)
-        const suiPythClient = new SuiPythClient(client as any, OracleProConfig.PythStateId, OracleProConfig.WormholeStateId)
+// Fetches the binary VAA update messages from Hermes and returns them as
+// Buffers in the order Pyth's `update_price_feeds` Move call expects.
+async function fetchPythUpdateBuffers(priceIds: string[]): Promise<Buffer[]> {
+    const update = await hermesClient.getLatestPriceUpdates(priceIds, { encoding: 'hex' });
+    const binaryData = (update?.binary?.data ?? []) as string[];
+    return binaryData.map((hex) => Buffer.from(hex, 'hex'));
+}
 
-        return await suiPythClient.updatePriceFeeds(txb as any, priceUpdateData, priceFeedIds)
+async function updatePythPriceFeeds(client: ClientWithCoreApi, txb: Transaction, priceFeedIds: string[]) {
+    try {
+        const priceUpdateData = await fetchPythUpdateBuffers(priceFeedIds);
+        const suiPythClient = new SuiPythClient(client, OracleProConfig.PythStateId, OracleProConfig.WormholeStateId);
+        return await suiPythClient.updatePriceFeeds(txb, priceUpdateData, priceFeedIds);
     } catch (error) {
-        throw new Error(`failed to update pyth price feeds, msg: ${(error as Error).message}`)
+        throw new Error(`failed to update pyth price feeds, msg: ${(error as Error).message}`);
     }
 }
 
@@ -672,7 +690,7 @@ async function updatePythPriceFeeds(client: SuiClient, txb: Transaction, priceFe
  * @param txb - The Transaction to update the price for.
  * @returns A Promise that resolves once the price has been updated.
  */
-export async function updateOraclePTB(client: SuiClient, txb: Transaction) {
+export async function updateOraclePTB(client: ClientWithCoreApi, txb: Transaction) {
     const pythPriceFeedIds = Object.keys(PriceFeedConfig).map((key) => PriceFeedConfig[key].pythPriceFeedId)
     const stalePriceFeedIds = await getPythStalePriceFeedId(pythPriceFeedIds)
     if (stalePriceFeedIds.length > 0) {
@@ -713,7 +731,7 @@ export async function updateOraclePTB(client: SuiClient, txb: Transaction) {
     updateSinglePrice(txb, PriceFeedConfig.XAUM);
 }
 
-export async function updateOracleByIdsPTB(client: SuiClient, txb: Transaction, oracleIds: number[]) {
+export async function updateOracleByIdsPTB(client: ClientWithCoreApi, txb: Transaction, oracleIds: number[]) {
     const matchedConfigs = Object.values(PriceFeedConfig).filter((cfg) =>
         oracleIds.includes(cfg.oracleId)
     );
@@ -733,141 +751,14 @@ export async function updateOracleByIdsPTB(client: SuiClient, txb: Transaction, 
 
 
 /**
- * Registers the required struct types for the PTB common functions.
+ * No-op registration shim. Pre-fork this called `bcs.registerStructType` for
+ * every Move struct used by `inspectResultParseAndPrint`. v2 `@mysten/sui/bcs`
+ * removed the runtime-named registry — every struct is now a typed
+ * `BcsType<T>` declared up-front in `src/libs/bcs.ts` and resolved per-callsite
+ * via `parseBcsTypeString`. The function is preserved as a no-op so that
+ * existing call sites (`registerStructs()` at the start of various readers)
+ * keep compiling without forcing every consumer to drop the call in lockstep.
  */
 export function registerStructs() {
-    /**
-     * Represents the information about the APY (Annual Percentage Yield) for an incentive.
-     * @typedef {Object} IncentiveAPYInfo
-     * @property {string} asset_id - The ID of the asset.
-     * @property {string} apy - The APY value.
-     * @property {string[]} coin_types - The types of coins.
-     */
-
-    bcs.registerStructType('IncentiveAPYInfo', {
-        asset_id: 'u8',
-        apy: 'u256',
-        coin_types: 'vector<string>',
-    });
-
-    /**
-     * Represents the information about an incentive pool.
-     * @typedef {Object} IncentivePoolInfo
-     * @property {string} pool_id - The ID of the pool.
-     * @property {string} funds - The funds available in the pool.
-     * @property {number} phase - The phase of the pool.
-     * @property {number} start_at - The start time of the pool.
-     * @property {number} end_at - The end time of the pool.
-     * @property {number} closed_at - The time when the pool was closed.
-     * @property {number} total_supply - The total supply of the pool.
-     * @property {string} asset_id - The ID of the asset.
-     * @property {number} option - The option of the pool.
-     * @property {string} factor - The factor of the pool.
-     * @property {number} distributed - The distributed amount from the pool.
-     * @property {string} available - The available amount in the pool.
-     * @property {string} total - The total amount in the pool.
-     */
-
-    bcs.registerStructType('IncentivePoolInfo', {
-        pool_id: 'address',
-        funds: 'address',
-        phase: 'u64',
-        start_at: 'u64',
-        end_at: 'u64',
-        closed_at: 'u64',
-        total_supply: 'u64',
-        asset_id: 'u8',
-        option: 'u8',
-        factor: 'u256',
-        distributed: 'u64',
-        available: 'u256',
-        total: 'u256',
-    });
-
-    /**
-     * Represents the information about an incentive pool by phase.
-     * @typedef {Object} IncentivePoolInfoByPhase
-     * @property {number} phase - The phase of the pool.
-     * @property {IncentivePoolInfo[]} pools - The list of pools in the phase.
-     */
-
-    bcs.registerStructType('IncentivePoolInfoByPhase', {
-        phase: 'u64',
-        pools: 'vector<IncentivePoolInfo>',
-    });
-
-    /**
-     * Represents the information about the user's state.
-     * @typedef {Object} UserStateInfo
-     * @property {string} asset_id - The ID of the asset.
-     * @property {string} borrow_balance - The borrow balance of the user.
-     * @property {string} supply_balance - The supply balance of the user.
-     */
-
-    bcs.registerStructType('UserStateInfo', {
-        asset_id: 'u8',
-        borrow_balance: 'u256',
-        supply_balance: 'u256',
-    });
-
-    /**
-     * Represents the information about the reserve data.
-     * @typedef {Object} ReserveDataInfo
-     * @property {number} id - The ID of the reserve.
-     * @property {number} oracle_id - The ID of the oracle.
-     * @property {string} coin_type - The type of the coin.
-     * @property {string} supply_cap - The supply cap of the reserve.
-     * @property {string} borrow_cap - The borrow cap of the reserve.
-     * @property {string} supply_rate - The supply rate of the reserve.
-     * @property {string} borrow_rate - The borrow rate of the reserve.
-     * @property {string} supply_index - The supply index of the reserve.
-     * @property {string} borrow_index - The borrow index of the reserve.
-     * @property {string} total_supply - The total supply of the reserve.
-     * @property {string} total_borrow - The total borrow of the reserve.
-     * @property {number} last_update_at - The last update time of the reserve.
-     * @property {string} ltv - The loan-to-value ratio of the reserve.
-     * @property {string} treasury_factor - The treasury factor of the reserve.
-     * @property {string} treasury_balance - The treasury balance of the reserve.
-     * @property {string} base_rate - The base rate of the reserve.
-     * @property {string} multiplier - The multiplier of the reserve.
-     * @property {string} jump_rate_multiplier - The jump rate multiplier of the reserve.
-     * @property {string} reserve_factor - The reserve factor of the reserve.
-     * @property {string} optimal_utilization - The optimal utilization of the reserve.
-     * @property {string} liquidation_ratio - The liquidation ratio of the reserve.
-     * @property {string} liquidation_bonus - The liquidation bonus of the reserve.
-     * @property {string} liquidation_threshold - The liquidation threshold of the reserve.
-     */
-
-    bcs.registerStructType('ReserveDataInfo', {
-        id: 'u8',
-        oracle_id: 'u8',
-        coin_type: 'string',
-        supply_cap: 'u256',
-        borrow_cap: 'u256',
-        supply_rate: 'u256',
-        borrow_rate: 'u256',
-        supply_index: 'u256',
-        borrow_index: 'u256',
-        total_supply: 'u256',
-        total_borrow: 'u256',
-        last_update_at: 'u64',
-        ltv: 'u256',
-        treasury_factor: 'u256',
-        treasury_balance: 'u256',
-        base_rate: 'u256',
-        multiplier: 'u256',
-        jump_rate_multiplier: 'u256',
-        reserve_factor: 'u256',
-        optimal_utilization: 'u256',
-        liquidation_ratio: 'u256',
-        liquidation_bonus: 'u256',
-        liquidation_threshold: 'u256',
-    });
-
-    bcs.registerStructType('OracleInfo', {
-        oracle_id: 'u8',
-        price: 'u256',
-        decimals: 'u8',
-        valid: 'bool',
-      })
+    /* intentionally empty — see src/libs/bcs.ts for the v2 typed struct definitions */
 }

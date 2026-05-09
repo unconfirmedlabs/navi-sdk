@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
-    "target": "es6",
-    "module": "commonjs",
-    "lib": ["es2017", "es7", "es6", "dom"],
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
     "declaration": true,
     "outDir": "./dist/",
     "rootDir": "./src/",

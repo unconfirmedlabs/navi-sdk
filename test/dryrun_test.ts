@@ -1,5 +1,5 @@
 import { Transaction } from '@mysten/sui/transactions';
-import { SuiClient, SuiEvent } from '@mysten/sui/client';
+import { SuiGrpcClient } from '@mysten/sui/grpc';
 import {
   buildSwapPTBFromQuote,
   Dex,
@@ -17,13 +17,14 @@ const client = new NAVISDKClient({
 });
 const accountManager = client.accounts[0];
 
-const provider = new SuiClient({
-  url: 'https://fullnode.mainnet.sui.io',
+const provider = new SuiGrpcClient({
+  network: 'mainnet',
+  baseUrl: 'https://fullnode.mainnet.sui.io:443',
 });
 
 function returnMergedCoins(txb: Transaction, coins: any[], amount: number) {
   if (coins.length < 2) {
-    return txb.object(coins[0].coinObjectId);
+    return txb.object(coins[0].objectId);
   }
 
   let mergedBalance = 0;
@@ -36,9 +37,9 @@ function returnMergedCoins(txb: Transaction, coins: any[], amount: number) {
         return;
       }
       mergedBalance += Number(coin.balance);
-      mergeList.push(coin.coinObjectId);
+      mergeList.push(coin.objectId);
     });
-  const baseObj = coins[0].coinObjectId;
+  const baseObj = coins[0].objectId;
   txb.mergeCoins(baseObj, mergeList);
 
   return txb.object(baseObj);

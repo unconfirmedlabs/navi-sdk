@@ -1,15 +1,15 @@
 {
-  "name": "navi-sdk",
-  "version": "1.6.23",
-  "description": "",
+  "name": "@unconfirmed/navi-sdk",
+  "version": "2.0.0-alpha.0",
+  "description": "Fork of naviprotocol/navi-sdk migrated to @mysten/sui v2 (gRPC). On-chain PTB shape is identical; the off-chain TypeScript surface uses v2 Core API method names + response shapes.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "lint": "tslint -c tslint.json 'src/**/*.ts'",
     "test": "vitest"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["sui", "navi", "lending", "defi", "grpc"],
+  "author": "unconfirmed",
   "license": "ISC",
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
@@ -19,9 +19,9 @@
   },
   "dependencies": {
     "@mayanfinance/swap-sdk": "10.3.0",
-    "@mysten/sui": "^1.16.0",
-    "@mysten/sui.js": "^0.54.1",
-    "@pythnetwork/pyth-sui-js": "^2.1.0",
+    "@mysten/sui": "^2.11.0",
+    "@pythnetwork/hermes-client": "^3.0.0",
+    "@scure/bip39": "^1.6.0",
     "@solana/web3.js": "^1.98.0",
     "axios": "^1.7.7",
     "bignumber.js": "^9.1.2",
@@ -32,6 +32,7 @@
     "tsconfig-paths": "^4.2.0",
     "vitest": "^1.6.0"
   },
+  "//deps_note": "Forked off `naviprotocol/navi-sdk@1.6.23`. Dependency changes from upstream: dropped `@mysten/sui.js` (v0.54 — bcs.de dynamic-string parser replaced with v2 typed-bcs structs in src/libs/bcs/); dropped `@pythnetwork/pyth-sui-js` (v2.4 — its SuiPythClient called v1 methods that don't exist on v2 gRPC clients) in favour of vendoring its 275-line client at src/libs/PythClient.ts and depending on `@pythnetwork/hermes-client` directly for VAA fetching.",
   "overrides": {
     "chalk": "5.3.0",
     "strip-ansi": "7.1.0",

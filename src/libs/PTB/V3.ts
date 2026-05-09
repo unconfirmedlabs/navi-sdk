@@ -1,7 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { getFullnodeUrl, SuiClient } from "@mysten/sui/client";
+import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { normalizeStructTag } from "@mysten/sui/utils";
-import { bcs } from "@mysten/sui.js/bcs";
 
 import { moveInspect, getReserveData, getIncentiveAPY } from "../CallFunctions";
 import { depositCoin } from "./commonFunctions";
@@ -18,6 +17,20 @@ const SECONDS_PER_DAY = 86400;
 const RATE_MULTIPLIER = 1000;
 
 /**
+ * Read a Move object via v2 `core.getObject({ include: { json: true } })` and
+ * wrap it in the v1 `{ data: { content: { fields, dataType } } }` shape that
+ * downstream code (`groupByAssetCoinType`, etc.) walks. Lets us migrate the
+ * read path without rewriting the structurally-deep field walkers.
+ */
+async function getObjectAsV1Shape(
+  client: ClientWithCoreApi,
+  objectId: string,
+): Promise<{ data: { content: { dataType: string; fields: any } } }> {
+  const obj = await client.core.getObject({ objectId, include: { json: true } });
+  return { data: { content: { dataType: "moveObject", fields: obj.object.json } } };
+}
+
+/**
  * Ensure that a coin type string starts with "0x".
  * @param coinType - The original coin type.
  * @returns The formatted coin type.
@@ -26,14 +39,13 @@ function formatCoinType(coinType: string): string {
   return coinType.startsWith("0x") ? coinType : "0x" + coinType;
 }
 
+/**
+ * No-op shim — `ClaimableReward` is now a typed `BcsType<T>` declared in
+ * `src/libs/bcs.ts` and resolved by `parseBcsTypeString`. See the matching
+ * shim + rationale in `commonFunctions.ts:registerStructs`.
+ */
 export function registerStructs() {
-  bcs.registerStructType("ClaimableReward", {
-    asset_coin_type: "string",
-    reward_coin_type: "string",
-    user_claimable_reward: "u256",
-    user_claimed_reward: "u256",
-    rule_ids: "vector<address>",
-  });
+  /* intentionally empty — see src/libs/bcs.ts */
 }
 
 // Inline helper functions to retrieve configuration keys.
@@ -65,7 +77,7 @@ const getPoolKey = (coinType: string): string | undefined => {
  * @throws {Error} If fetching rewards data fails or returns undefined.
  */
 export async function getAvailableRewards(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   checkAddress: string,
   prettyPrint = true
 ): Promise<V3Type.GroupedRewards | null> {
@@ -209,7 +221,7 @@ export async function getAvailableRewards(
  * @throws {Error} If fetching rewards data fails or returns undefined.
  */
 export async function getAvailableRewardsWithoutOption(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userAddress: string,
   prettyPrint = true
 ): Promise<V3Type.GroupedRewards | null> {
@@ -408,7 +420,7 @@ export async function claimRewardFunction(
  * @returns The Transaction with all claim commands appended
  */
 export async function claimAllRewardsPTB(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userAddress: string,
   existingTx?: Transaction
 ): Promise<Transaction> {
@@ -483,7 +495,7 @@ function filterRewardsByAssetId(groupedRewards: V3Type.GroupedRewards, assetId: 
 }
 
 export async function claimRewardsByAssetIdPTB(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userAddress: string,
   assetId: number,
   existingTx?: Transaction
@@ -622,7 +634,7 @@ export async function claimRewardResupplyFunction(
  * @returns The Transaction with all claim commands appended
  */
 export async function claimAllRewardsResupplyPTB(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userAddress: string,
   existingTx?: Transaction
 ): Promise<Transaction> {
@@ -674,13 +686,18 @@ export async function claimAllRewardsResupplyPTB(
   return tx;
 }
 
-export async function getBorrowFee(client: SuiClient): Promise<number> {
+export async function getBorrowFee(client: ClientWithCoreApi): Promise<number> {
   const protocolConfig = await getConfig();
-  const rawData: any = await client.getObject({
-    id: protocolConfig.IncentiveV3,
-    options: { showType: true, showOwner: true, showContent: true },
+  // v2 Core API: ask for the JSON-rendered Move struct directly via
+  // `include.json`. v1 walked `rawData.data.content.fields.<field>`; v2
+  // returns the same parsed object at `obj.object.json` (the on-chain
+  // struct shape is unchanged, only the response envelope differs).
+  const obj = await client.core.getObject({
+    objectId: protocolConfig.IncentiveV3,
+    include: { json: true },
   });
-  const borrowFee = rawData.data.content.fields.borrow_fee_rate;
+  const fields = (obj.object.json as any) ?? {};
+  const borrowFee = fields.borrow_fee_rate;
   return Number(borrowFee) / 100;
 }
 
@@ -995,13 +1012,18 @@ async function mergeApyResults(
 }
 
 export async function getCurrentRules(
-  client: SuiClient
+  client: ClientWithCoreApi
 ): Promise<V3Type.GroupedAssetPool[]> {
   const config = await getConfig();
-  const rawData = await client.getObject({
-    id: config.IncentiveV3,
-    options: { showType: true, showOwner: true, showContent: true },
+  // groupByAssetCoinType reads `incentiveData.data.content.fields.pools...`
+  // (v1 SuiObjectResponse shape). v2 `core.getObject` returns the parsed
+  // Move struct at `object.json` instead, so we wrap it in a v1-shaped
+  // envelope to keep the downstream walker unchanged.
+  const obj = await client.core.getObject({
+    objectId: config.IncentiveV3,
+    include: { json: true },
   });
+  const rawData = { data: { content: { dataType: "moveObject", fields: obj.object.json } } };
 
   const incentiveData = rawData as unknown as V3Type.IncentiveData;
   const groupedPools = groupByAssetCoinType(incentiveData);
@@ -1038,7 +1060,7 @@ export async function getCurrentRules(
  * @returns An array of final APY results for each pool.
  */
 async function getPoolApyInter(
-  client: SuiClient
+  client: ClientWithCoreApi
 ): Promise<V3Type.ApyResult[]> {
   // 1. Get configuration
   const config = await getConfig();
@@ -1048,10 +1070,7 @@ async function getPoolApyInter(
   // 2. Fetch ReserveData, IncentiveV3 data, and APY calculations in parallel
   const [reserves, rawData, v2SupplyApy, v2BorrowApy] = await Promise.all([
     getReserveData(config.StorageId, client),
-    client.getObject({
-      id: config.IncentiveV3,
-      options: { showType: true, showOwner: true, showContent: true },
-    }),
+    getObjectAsV1Shape(client, config.IncentiveV3),
     getIncentiveAPY(userAddress, client, 1),
     getIncentiveAPY(userAddress, client, 3),
   ]);
@@ -1099,7 +1118,7 @@ async function getPoolApyInter(
  * @returns An array of final APY results for each pool.
  */
 export async function getPoolsApyOuter(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   Token?: string
 ): Promise<V3Type.ApyResult[]> {
   // 1. Get configuration
@@ -1110,10 +1129,7 @@ export async function getPoolsApyOuter(
   // 2. Fetch ReserveData, IncentiveV3 data, and APY calculations in parallel
   const [reserves, rawData, v2SupplyApy, v2BorrowApy] = await Promise.all([
     getReserveData(config.StorageId, client),
-    client.getObject({
-      id: config.IncentiveV3,
-      options: { showType: true, showOwner: true, showContent: true },
-    }),
+    getObjectAsV1Shape(client, config.IncentiveV3),
     getIncentiveAPY(userAddress, client, 1),
     getIncentiveAPY(userAddress, client, 3),
   ]);
@@ -1176,7 +1192,7 @@ const transformPoolData = (data: PoolData[]): V3Type.ApyResult[] => {
   
 };
 
-export async function getPoolApy(client: SuiClient): Promise<V3Type.ApyResult[]> {
+export async function getPoolApy(client: ClientWithCoreApi): Promise<V3Type.ApyResult[]> {
   return getPoolsInfo()
     .then(data => {
       if (data) {
@@ -1191,7 +1207,7 @@ export async function getPoolApy(client: SuiClient): Promise<V3Type.ApyResult[]>
     });
 }
 
-export async function getPoolsApy(client: SuiClient, Token?: string): Promise<V3Type.ApyResult[]> {
+export async function getPoolsApy(client: ClientWithCoreApi, Token?: string): Promise<V3Type.ApyResult[]> {
   return getPoolsInfo()
     .then(data => {
       if (data) {

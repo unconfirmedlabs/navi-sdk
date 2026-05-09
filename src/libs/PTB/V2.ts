@@ -6,7 +6,7 @@ import {
   PriceFeedConfig,
 } from "../../address";
 import { OptionType } from "../../types";
-import { SuiClient } from "@mysten/sui/client";
+import type { ClientWithCoreApi } from "@mysten/sui/client";
 import { normalizeStructTag } from "@mysten/sui/utils";
 import { moveInspect, getCoinOracleInfo } from "../CallFunctions";
 import { registerStructs, updateOraclePTB } from "./commonFunctions";
@@ -28,7 +28,7 @@ interface Reward {
  * @returns The incentive pools information.
  */
 export async function getIncentivePools(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   assetId: number,
   option: OptionType,
   user: string
@@ -76,7 +76,7 @@ interface FormattedData {
  * @throws If there is an error retrieving the available rewards.
  */
 export async function getAvailableRewards(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   checkAddress: string,
   option: OptionType = 1,
   prettyPrint = true
@@ -103,19 +103,27 @@ export async function getAvailableRewards(
     );
     const fundIds = [...new Set(activePools.map((item) => item.funds))];
 
-    // Fetch fund details
-    const funds = await client.multiGetObjects({
-      ids: fundIds,
-      options: { showContent: true },
+    // Fetch fund details. v2 `core.getObjects` returns `{ objects: (Object | Error)[] }`
+    // (was v1 `multiGetObjects` returning `SuiObjectResponse[]`). The
+    // v1 `pool.data.content.fields.coin_type.fields.name` walk is replaced
+    // with the parsed JSON payload at `obj.json` (asked via `include.json`).
+    // The on-chain object shape is identical — only the response wrapper
+    // differs.
+    const fundsResp = await client.core.getObjects({
+      objectIds: fundIds,
+      include: { json: true },
     });
 
-    // Extract relevant data
-    const fundDetails = funds.map((item) => ({
-      funds: item?.data?.objectId,
-      reward_coin_type: (item.data?.content as any)?.fields?.coin_type?.fields
-        ?.name,
-      reward_coin_oracle_id: (item.data?.content as any)?.fields?.oracle_id,
-    }));
+    const fundDetails = fundsResp.objects
+      .filter((item): item is Exclude<typeof item, Error> => !(item instanceof Error))
+      .map((item) => {
+        const fields = (item.json as any) ?? {};
+        return {
+          funds: item.objectId,
+          reward_coin_type: fields?.coin_type?.fields?.name,
+          reward_coin_oracle_id: fields?.oracle_id,
+        };
+      });
 
     // Merge extracted data with active pools
     const mergedPools = activePools.map((pool) => {
@@ -223,7 +231,7 @@ export async function getAvailableRewards(
  * @returns PTB result
  */
 export async function claimAllRewardsPTB(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userToCheck: string,
   tx?: Transaction
 ) {
@@ -288,7 +296,7 @@ export async function claimAllRewardsPTB(
 }
 
 export async function claimRewardsByAssetIdPTB(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userToCheck: string,
   assetId: number,
   tx?: Transaction
@@ -356,7 +364,7 @@ export async function claimRewardFunction(
  * @returns PTB result
  */
 export async function claimAllRewardsResupplyPTB(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   userToCheck: string,
   tx?: Transaction
 ) {
@@ -473,7 +481,7 @@ export async function claimRewardResupplyFunction(
 }
 
 export async function getIncentivePoolsByPhase(
-  client: SuiClient,
+  client: ClientWithCoreApi,
   option: OptionType,
   user: string
 ) {
